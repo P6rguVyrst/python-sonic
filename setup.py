@@ -1,25 +1,43 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""The setup script."""
 from setuptools import setup, find_packages
 # To use a consistent encoding
 from codecs import open
-from os import path
 
-here = path.abspath(path.dirname(__file__))
 
 # Get the long description from the README file
-with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
+with open('README.rst'), encoding='utf-8') as f:
     long_description = f.read()
+
+requirements = [
+    'python-osc',
+]
+
+setup_requirements = [
+    'pytest-runner',
+    # TODO(P6rguVyrst): put setup requirements (distutils extensions, etc.) here
+]
+
+test_requirements = [
+    'pytest',
+    # TODO: put package test requirements here
+]
+
 
 setup(
     name='python-sonic',
-    version='0.3.0',
+    version='0.3.1',
     description='Programming Music with Sonic Pi or Supercollider',
     long_description=long_description,
     url='https://github.com/gkvoelkl/python-sonic',
     author='gkvoelkl',
     author_email='gkvoelkl@nelson-games.de',
-
+    packages=find_packages(include=['psonic']),
+    include_package_data=True,
+    install_requires=requirements,
     license='MIT',
-
+    zip_safe=False,
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
@@ -31,7 +49,6 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
     ],
-
     keywords= [
        'music',
        'sonic pi',
@@ -42,18 +59,7 @@ setup(
        'supercollider',
        'synthesis'
     ],
-
-    #packages=find_packages(),
-    py_modules=['psonic'],
-    install_requires=['python-osc'],
-
-    # To provide executable scripts, use entry points in preference to the
-    # "scripts" keyword. Entry points provide cross-platform support and allow
-    # pip to create the appropriate form of executable for the target platform.
-    #entry_points={
-    #    'console_scripts': [
-    #        'sample=sample:main',
-    #    ],
-    #},
+    test_suite='tests',
+    tests_require=test_requirements,
+    setup_requires=setup_requirements,
 )
-
