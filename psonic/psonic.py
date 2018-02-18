@@ -23,15 +23,16 @@ import random
 import time
 import threading
 
-from pythonosc import osc_message_builder  # osc support
-from pythonosc import udp_client
 
 __debug = False
 
 from psonic.notes import *
 from psonic.scales import *
 from psonic.synthesizers import *
-
+from psonic.internals.connection import SonicPi
+from psonic.internals.scales import _SCALE_MODE
+from psonic.internals.chords import _CHORD_QUALITY
+from psonic.internals.helper import ActiveSettings
 ## Base Classes ##
 
 class ChordQuality:
@@ -97,91 +98,6 @@ def in_thread(func):
     return wrapper
 
 
-_ionian_sequence = [2, 2, 1, 2, 2, 2, 1]
-_hex_sequence = [2, 2, 1, 2, 2, 3]
-_pentatonic_sequence = [3, 2, 2, 3, 2]
-
-_SCALE_MODE = {
-    'diatonic': _ionian_sequence,
-    'ionian': _ionian_sequence,
-    'major': _ionian_sequence,
-    'dorian': _ionian_sequence[1:] + _ionian_sequence[:1],  # rotate 1
-    'phrygian': _ionian_sequence[2:] + _ionian_sequence[:2],  # rotate(2)
-    'lydian': _ionian_sequence[3:] + _ionian_sequence[:3],  # rotate(3)
-    'mixolydian': _ionian_sequence[4:] + _ionian_sequence[:4],  # rotate(4)
-    'aeolian': _ionian_sequence[5:] + _ionian_sequence[:5],  # rotate(5)
-    'minor': _ionian_sequence[5:] + _ionian_sequence[:5],  # rotate(5)
-    'locrian': _ionian_sequence[6:] + _ionian_sequence[:6],  # rotate(6)
-    'hex_major6': _hex_sequence,
-    'hex_dorian': _hex_sequence[1:] + _hex_sequence[:1],  # rotate(1)
-    'hex_phrygian': _hex_sequence[2:] + _hex_sequence[:2],  # rotate(2)
-    'hex_major7': _hex_sequence[3:] + _hex_sequence[:3],  # rotate(3)
-    'hex_sus': _hex_sequence[4:] + _hex_sequence[:4],  # rotate(4)
-    'hex_aeolian': _hex_sequence[5:] + _hex_sequence[:5],  # rotate(5)
-    'minor_pentatonic': _pentatonic_sequence,
-    'yu': _pentatonic_sequence,
-    'major_pentatonic': _pentatonic_sequence[1:] + _pentatonic_sequence[:1],  # rotate(1)
-    'gong': _pentatonic_sequence[1:] + _pentatonic_sequence[:1],  # rotate(1)
-    'egyptian': _pentatonic_sequence[2:] + _pentatonic_sequence[:2],  # rotate(2)
-    'shang': _pentatonic_sequence[2:] + _pentatonic_sequence[:2],  # rotate(2)
-    'jiao': _pentatonic_sequence[3:] + _pentatonic_sequence[:3],  # rotate(3)
-    'zhi': _pentatonic_sequence[4:] + _pentatonic_sequence[:4],  # rotate(4)
-    'ritusen': _pentatonic_sequence[4:] + _pentatonic_sequence[:4],  # rotate(4)
-    'whole_tone': [2, 2, 2, 2, 2, 2],
-    'whole': [2, 2, 2, 2, 2, 2],
-    'chromatic': [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    'harmonic_minor': [2, 1, 2, 2, 1, 3, 1],
-    'melodic_minor_asc': [2, 1, 2, 2, 2, 2, 1],
-    'hungarian_minor': [2, 1, 3, 1, 1, 3, 1],
-    'octatonic': [2, 1, 2, 1, 2, 1, 2, 1],
-    'messiaen1': [2, 2, 2, 2, 2, 2],
-    'messiaen2': [1, 2, 1, 2, 1, 2, 1, 2],
-    'messiaen3': [2, 1, 1, 2, 1, 1, 2, 1, 1],
-    'messiaen4': [1, 1, 3, 1, 1, 1, 3, 1],
-    'messiaen5': [1, 4, 1, 1, 4, 1],
-    'messiaen6': [2, 2, 1, 1, 2, 2, 1, 1],
-    'messiaen7': [1, 1, 1, 2, 1, 1, 1, 1, 2, 1],
-    'super_locrian': [1, 2, 1, 2, 2, 2, 2],
-    'hirajoshi': [2, 1, 4, 1, 4],
-    'kumoi': [2, 1, 4, 2, 3],
-    'neapolitan_major': [1, 2, 2, 2, 2, 2, 1],
-    'bartok': [2, 2, 1, 2, 1, 2, 2],
-    'bhairav': [1, 3, 1, 2, 1, 3, 1],
-    'locrian_major': [2, 2, 1, 1, 2, 2, 2],
-    'ahirbhairav': [1, 3, 1, 2, 2, 1, 2],
-    'enigmatic': [1, 3, 2, 2, 2, 1, 1],
-    'neapolitan_minor': [1, 2, 2, 2, 1, 3, 1],
-    'pelog': [1, 2, 4, 1, 4],
-    'augmented2': [1, 3, 1, 3, 1, 3],
-    'scriabin': [1, 3, 3, 2, 3],
-    'harmonic_major': [2, 2, 1, 2, 1, 3, 1],
-    'melodic_minor_desc': [2, 1, 2, 2, 1, 2, 2],
-    'romanian_minor': [2, 1, 3, 1, 2, 1, 2],
-    'hindu': [2, 2, 1, 2, 1, 2, 2],
-    'iwato': [1, 4, 1, 4, 2],
-    'melodic_minor': [2, 1, 2, 2, 2, 2, 1],
-    'diminished2': [2, 1, 2, 1, 2, 1, 2, 1],
-    'marva': [1, 3, 2, 1, 2, 2, 1],
-    'melodic_major': [2, 2, 1, 2, 1, 2, 2],
-    'indian': [4, 1, 2, 3, 2],
-    'spanish': [1, 3, 1, 2, 1, 2, 2],
-    'prometheus': [2, 2, 2, 5, 1],
-    'diminished': [1, 2, 1, 2, 1, 2, 1, 2],
-    'todi': [1, 2, 3, 1, 1, 3, 1],
-    'leading_whole': [2, 2, 2, 2, 2, 1, 1],
-    'augmented': [3, 1, 3, 1, 3, 1],
-    'purvi': [1, 3, 2, 1, 1, 3, 1],
-    'chinese': [4, 2, 1, 4, 1],
-    'lydian_minor': [2, 2, 2, 1, 1, 2, 2],
-    'i': _ionian_sequence,
-    'ii': _ionian_sequence[1:] + _ionian_sequence[:1],  # rotate(1)
-    'iii': _ionian_sequence[2:] + _ionian_sequence[:2],  # rotate(2)
-    'iv': _ionian_sequence[3:] + _ionian_sequence[:3],  # rotate(3)
-    'v': _ionian_sequence[4:] + _ionian_sequence[:4],  # rotate(4)
-    'vi': _ionian_sequence[5:] + _ionian_sequence[:5],  # rotate(5)
-    'vii': _ionian_sequence[6:] + _ionian_sequence[:6],  # rotate(6),
-    'viii': _ionian_sequence[7:] + _ionian_sequence[:7]}  # rotate(7)
-
 ## Chord Quality (from sonic pi) ##
 MAJOR7 = "major7"
 DOM7 = "dom7"
@@ -189,62 +105,6 @@ MINOR7 = "minor7"
 AUG = "aug"
 DIM = "dim"
 DIM7 = "dim7"
-
-_CHORD_QUALITY = {
-    'major': [0, 4, 7],
-    'minor': [0, 3, 7],
-    'major7': [0, 4, 7, 11],
-    'dom7': [0, 4, 7, 10],
-    'minor7': [0, 3, 7, 10],
-    'aug': [0, 4, 8],
-    'dim': [0, 3, 6],
-    'dim7': [0, 3, 6, 9],
-    '1': [0],
-    "5": [0, 7],
-    "+5": [0, 4, 8],
-    "m+5": [0, 3, 8],
-    "sus2": [0, 2, 7],
-    "sus4": [0, 5, 7],
-    "6": [0, 4, 7, 9],
-    "m6": [0, 3, 7, 9],
-    "7sus2": [0, 2, 7, 10],
-    "7sus4": [0, 5, 7, 10],
-    "7-5": [0, 4, 6, 10],
-    "m7-5": [0, 3, 6, 10],
-    "7+5": [0, 4, 8, 10],
-    "m7+5": [0, 3, 8, 10],
-    "9": [0, 4, 7, 10, 14],
-    "m9": [0, 3, 7, 10, 14],
-    "m7+9": [0, 3, 7, 10, 14],
-    "maj9": [0, 4, 7, 11, 14],
-    "9sus4": [0, 5, 7, 10, 14],
-    "6*9": [0, 4, 7, 9, 14],
-    "m6*9": [0, 3, 9, 7, 14],
-    "7-9": [0, 4, 7, 10, 13],
-    "m7-9": [0, 3, 7, 10, 13],
-    "7-10": [0, 4, 7, 10, 15],
-    "9+5": [0, 10, 13],
-    "m9+5": [0, 10, 14],
-    "7+5-9": [0, 4, 8, 10, 13],
-    "m7+5-9": [0, 3, 8, 10, 13],
-    "11": [0, 4, 7, 10, 14, 17],
-    "m11": [0, 3, 7, 10, 14, 17],
-    "maj11": [0, 4, 7, 11, 14, 17],
-    "11+": [0, 4, 7, 10, 14, 18],
-    "m11+": [0, 3, 7, 10, 14, 18],
-    "13": [0, 4, 7, 10, 14, 17, 21],
-    "m13": [0, 3, 7, 10, 14, 17, 21],
-    "M": [0, 4, 7],
-    "m": [0, 3, 7],
-    "7": [0, 4, 7, 10],
-    "M7": [0, 4, 7, 11],
-    "m7": [0, 3, 7],
-    "augmented": [0, 4, 8],
-    "a": [0, 4, 8],
-    "diminished": [0, 3, 6],
-    "i": [0, 3, 6],
-    "diminished7": [0, 3, 6, 9],
-    "i7": [0, 3, 6, 9]}
 
 ## FX
 BITCRUSHER = FxName('bitcrusher')
@@ -260,17 +120,20 @@ SLICER = FxName('slicer')
 WOBBLE = FxName('wobble')
 
 ## Module attributes ##
-_current_synth = BEEP
+#_current_synth = BEEP
 
-
+# HOW TO CHANGE INSTRUMENTS?
+settings = ActiveSettings()
 ## Module methodes ##
 def use_synth(synth):
-    global _current_synth
-    _current_synth = synth
+    settings._current_synth = synth
 
+    #global _current_synth
+    #_current_synth = synth
 
-def synth(name, note=None, attack=None, decay=None, sustain_level=None, sustain=None, release=None, cutoff=None,
-          cutoff_attack=None, amp=None, pan=None):
+def synth(name, note=None, attack=None, decay=None,
+          sustain_level=None, sustain=None, release=None,
+          cutoff=None, cutoff_attack=None, amp=None, pan=None):
     parameters = []
     parameter = ''
 
@@ -292,7 +155,6 @@ def synth(name, note=None, attack=None, decay=None, sustain_level=None, sustain=
 
     _debug('synth command={}'.format(command))
     synth_server.synth(command)
-
 
 def play(note, attack=None, decay=None, sustain_level=None, sustain=None, release=None, cutoff=None,
          cutoff_attack=None, amp=None, pan=None):
@@ -317,7 +179,6 @@ def play(note, attack=None, decay=None, sustain_level=None, sustain=None, releas
     _debug('play command={}'.format(command))
     synth_server.play(command)
 
-
 def play_pattern_timed(notes, times, release=None):
     """
     play notes
@@ -333,7 +194,6 @@ def play_pattern_timed(notes, times, release=None):
             play(i, release=release)
             sleep(t)
 
-
 def play_pattern(notes):
     """
 
@@ -341,7 +201,6 @@ def play_pattern(notes):
     :return:
     """
     play_pattern_timed(notes, 1)
-
 
 def sample(sample, rate=None, attack=None, sustain=None, release=None, beat_stretch=None,
            start=None, finish=None, amp=None, pan=None):
@@ -369,7 +228,6 @@ def sample(sample, rate=None, attack=None, sustain=None, release=None, beat_stre
     _debug('sample command={}'.format(command))
     synth_server.sample(command)
 
-
 def sleep(duration):
     """
     the same as time.sleep
@@ -388,7 +246,6 @@ def sample_duration(sample):
     """
     return sample.duration
 
-
 def one_in(max):
     """
     random function  returns True in one of max cases
@@ -396,7 +253,6 @@ def one_in(max):
     :return: boolean
     """
     return random.randint(1, max) == 1
-
 
 def chord(root_note, chord_quality):
     """
@@ -416,7 +272,6 @@ def chord(root_note, chord_quality):
         result.append(n)
 
     return result
-
 
 def scale(root_note, scale_mode, num_octaves=1):
     """
@@ -450,8 +305,8 @@ def stop():
 def send_message(message, *parameter):
     synth_server.send_message(message, *parameter)
 
-## Compound classes ##
 
+## Compound classes ##
 class Ring(object):
     """
     ring buffer
@@ -474,107 +329,12 @@ class Ring(object):
         return random.choice(self.data)
 
 
-## Connection classes ##
-
-class SonicPi(object):
-    """
-    Communiction to Sonic Pi
-    """
-
-    UDP_IP = "127.0.0.1"
-    UDP_PORT = 4557
-    UDP_PORT_OSC_MESSAGE = 4559
-    GUI_ID = 'SONIC_PI_PYTHON'
-
-    RUN_COMMAND = "/run-code"
-    STOP_COMMAND = "/stop-all-jobs"
-
-    def __init__(self):
-        self.client = udp_client.UDPClient(SonicPi.UDP_IP, SonicPi.UDP_PORT)
-        self.client_for_messages = udp_client.UDPClient(SonicPi.UDP_IP, SonicPi.UDP_PORT_OSC_MESSAGE)
-
-    def sample(self, command):
-        self.run(command)
-
-    def play(self, command):
-        command = 'use_synth :{0}\n'.format(_current_synth.name) + command
-        self.run(command)
-
-    def synth(self, command):
-        self.run(command)
-
-    def sleep(self, duration):
-        time.sleep(duration)
-
-    def run(self, command):
-        self.send_command(SonicPi.RUN_COMMAND, command)
-
-    def stop(self):
-        self.send_command(SonicPi.STOP_COMMAND)
-
-    def test_connection(self):
-        # OSC::Server.new(PORT)
-        # abort("ERROR: Sonic Pi is not listening on #{PORT} - is it running?")
-        pass
-
-    def send_command(self, address, argument=''):
-        msg = osc_message_builder.OscMessageBuilder(address=address)
-        msg.add_arg('SONIC_PI_PYTHON')
-        if argument != "":
-            msg.add_arg(argument)
-        msg = msg.build()
-
-        self.client.send(msg)
-
-    def send_message(self,message, *parameters):
-        msg = osc_message_builder.OscMessageBuilder(message)
-        for p in parameters:
-            msg.add_arg(p)
-        msg = msg.build()
-        self.client_for_messages.send(msg)
-
-
-class SonicPiNew:
-    """
-    Communiction to Sonic Pi
-    """
-
-    UDP_IP = "127.0.0.1"
-    UDP_PORT = 4559
-
-    def __init__(self):
-        self.client = udp_client.UDPClient(SonicPiNew.UDP_IP, SonicPiNew.UDP_PORT)
-        self.commandServer = SonicPi()
-        # x= 'live_loop :py do\n  nv=sync "/SENDOSC"\n  puts nv\n  eval(nv[0])\nend'
-        # self.commandServer.run(x)
-
-    def set_OSC_receiver(self, source):
-        self.commandServer.run(source)
-
-    def send(self, address, *message):
-        msg = osc_message_builder.OscMessageBuilder(address)
-        for m in message:
-            msg.add_arg(m)
-        msg = msg.build()
-        self.client.send(msg)
-
-    def sample(self, command):
-        self.send(command)
-
-    def play(self, command):
-        self.send(command)
-
-    def sleep(self, duration):
-        time.sleep(duration)
-
-
 synth_server = SonicPi()
 
 
 ## system functions ##
-
-def _debug(*allargs):  # simple debug function for working in different environments
-    if __debug: print(allargs)
+def _debug(*args):  # simple debug function for working in different environments
+    if __debug: print(args)
 
 
 if __name__ == '__main__':
